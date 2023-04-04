@@ -24,16 +24,20 @@ from timestepping import theta_method, serial_steps
 
 # parameters
 
+serial_init = True
 verbose = True
 noise_level = 0.2
+tail_term = False
 alpha = 1e-2
 init_its = 1
+nwrs = 15
+wr_tol = 1e-5
 
 inner_maxiter = 200
 
 init_weight = 0.0
 
-ntimescales = 1
+ntimescales = 3
 ntperscale = 1024
 
 Tlambda = log(10)/0.9
@@ -41,7 +45,7 @@ T = ntimescales*Tlambda
 nt = ntperscale*ntimescales
 dt = T/nt
 
-theta = 0.5
+theta = 0.0
 
 x0 = 9
 y0 = 13
@@ -83,6 +87,9 @@ def aaosfunc(q, a=alpha):
     r = np.zeros_like(q)
 
     q0 = qinit
+    if tail_term:
+        q0 = q0 +  a*(qNk - qNk1)
+
     q1 = q[0,:]
     r[0, :] = theta_method(lorenz, q1, q0, dt, theta)
 
@@ -154,10 +161,14 @@ def block_op(l1, l2, q):
 P = BlockCirculantLinearOperator(b1, b2, block_op, 3, alpha=alpha)
 P.update(xyz, aaosfunc(xyz))
 
-stepper = partial(theta_method, theta=theta)
-xyz[0] = serial_steps(lorenz, qinit, 1, dt, stepper)
-for i in range(1, nt):
-    xyz[i] = serial_steps(lorenz, xyz[i-1], 1, dt, stepper)
+if serial_init:
+    stepper = partial(theta_method, theta=theta)
+    xyz[0] = serial_steps(lorenz, qinit, 1, dt, stepper)
+    for i in range(1, nt):
+        xyz[i] = serial_steps(lorenz, xyz[i-1], 1, dt, stepper)
+else:
+    for i in range(init_its):
+        xyz -= P.matvec(aaosfunc(xyz, a=0).reshape(nt*3)).reshape(nt,3)
 
 xyz += noise_level*np.random.normal(0, 1.0, xyz.shape)
 qNk = xyz[-1,:]
@@ -199,20 +210,22 @@ def newton_callback(x, f):
 
 
 writs = 0
-print(f"Waveform iteration: {writs} | Residual: {np.linalg.norm(aaosfunc(xyz, a=0))} | Tail norm: {alpha*np.linalg.norm(qNk-qNk1)}")
-xyz = newton_krylov(aaosfunc, xyz, method='gmres',
-                    #verbose=True,
-                    maxiter=100,
-                    f_rtol = 1e-5,
-                    callback=newton_callback,
-                    inner_M=P,
-                    inner_maxiter=inner_maxiter,
-                    inner_tol=1e-5,
-                    inner_callback=gmres_callback,
-                    inner_callback_type='pr_norm')
-qNk1 = qNk
-qNk = xyz[-1,:]
-writs += 1
+for i in range(nwrs):
+    print(f"Waveform iteration: {i} | Residual: {np.linalg.norm(aaosfunc(xyz, a=0))} | Tail norm: {alpha*np.linalg.norm(qNk-qNk1)}")
+    xyz = newton_krylov(aaosfunc, xyz, method='gmres',
+                        #verbose=True,
+                        maxiter=100,
+                        f_rtol = 1e-5,
+                        callback=newton_callback,
+                        inner_M=P,
+                        inner_maxiter=inner_maxiter,
+                        inner_tol=1e-5,
+                        inner_callback=gmres_callback,
+                        inner_callback_type='pr_norm')
+    qNk1 = qNk
+    qNk = xyz[-1,:]
+    writs += 1
+    if np.linalg.norm(aaosfunc(xyz)) < wr_tol: break
 
 print(f"Waveform iteration: {writs} | Residual: {np.linalg.norm(aaosfunc(xyz, a=0))} | Tail norm: {alpha*np.linalg.norm(qNk-qNk1)}")
 
