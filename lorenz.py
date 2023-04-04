@@ -21,7 +21,7 @@ def dlorenz(q, sigma=10., beta=8./3, rho=28.):
     dxdz = 0
 
     dydx = rho - z
-    dydy = 1
+    dydy = -1
     dydz = -x
 
     dzdx = y
