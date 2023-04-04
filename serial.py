@@ -1,4 +1,5 @@
 
+from math import log
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import newton_krylov
@@ -20,14 +21,15 @@ from functools import partial
 
 # parameters
 
-ntimescales = 4
-ntperscale = 128
+ntimescales = 1
+ntperscale = 1024
 
-T = ntimescales*2.5
+Tlambda = log(10)/0.9
+T = ntimescales*Tlambda
 nt = ntperscale*ntimescales
 
 dt = T/nt
-theta = 0.5
+theta = 0.0
 
 # initial conditions
 
